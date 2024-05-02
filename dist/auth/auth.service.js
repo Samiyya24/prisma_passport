@@ -14,10 +14,12 @@ const common_1 = require("@nestjs/common");
 const bcrypt = require("bcrypt");
 const prisma_service_1 = require("../prisma/prisma.service");
 const jwt_1 = require("@nestjs/jwt");
+const users_service_1 = require("../users/users.service");
 let AuthService = class AuthService {
-    constructor(prismaService, jwtService) {
+    constructor(prismaService, jwtService, userwsService) {
         this.prismaService = prismaService;
         this.jwtService = jwtService;
+        this.userwsService = userwsService;
     }
     async getTokens(userId, email) {
         const jwtPayload = {
@@ -50,23 +52,11 @@ let AuthService = class AuthService {
             },
         });
     }
-    async signUp(createAuthDto, res) {
-        const candidate = await this.prismaService.user.findUnique({
-            where: {
-                email: createAuthDto.email,
-            },
-        });
-        if (candidate) {
-            throw new common_1.BadRequestException('User already exists!');
+    async signUp(createUserDto, res) {
+        const newUser = await this.userwsService.create(createUserDto);
+        if (!newUser) {
+            throw new common_1.InternalServerErrorException('Yange user yaratishda xatolik');
         }
-        const hashedPassword = await bcrypt.hash(createAuthDto.password, 7);
-        const newUser = await this.prismaService.user.create({
-            data: {
-                name: createAuthDto.name,
-                email: createAuthDto.email,
-                hashedPassword,
-            },
-        });
         const tokens = await this.getTokens(newUser.id, newUser.email);
         await this.updateRefreshToken(newUser.id, tokens.refresh_token);
         res.cookie('refresh_token', tokens.refresh_token, {
@@ -95,6 +85,7 @@ exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        jwt_1.JwtService])
+        jwt_1.JwtService,
+        users_service_1.UsersService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map
