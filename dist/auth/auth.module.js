@@ -14,6 +14,7 @@ const prisma_module_1 = require("../prisma/prisma.module");
 const jwt_1 = require("@nestjs/jwt");
 const strategies_1 = require("../common/strategies");
 const users_module_1 = require("../users/users.module");
+const refresh_token_cookie_strategy_1 = require("../common/strategies/refresh_token_cookie.strategy");
 let AuthModule = class AuthModule {
 };
 exports.AuthModule = AuthModule;
@@ -21,7 +22,13 @@ exports.AuthModule = AuthModule = __decorate([
     (0, common_1.Module)({
         imports: [jwt_1.JwtModule.register({}), prisma_module_1.PrismaModule, users_module_1.UsersModule],
         controllers: [auth_controller_1.AuthController],
-        providers: [auth_service_1.AuthService, strategies_1.AccessTokenStrategy],
+        providers: [
+            auth_service_1.AuthService,
+            strategies_1.AccessTokenStrategy,
+            strategies_1.RefreshTokenFromBearerStrategy,
+            refresh_token_cookie_strategy_1.RefreshTokenFromCookieStrategy,
+            common_1.Logger
+        ],
     })
 ], AuthModule);
 //# sourceMappingURL=auth.module.js.map

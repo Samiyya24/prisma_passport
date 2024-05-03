@@ -1,35 +1,36 @@
-import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
-import * as bcrypt from 'bcrypt';
-
-import { PrismaService } from '../prisma/prisma.service';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
-import { CreateAuthDto, UpdateAuthDto } from './dto';
+import { CreateAuthDto, LoginAuthDto, UpdateAuthDto } from './dto';
+import * as bcrypt from 'bcrypt';
 import { Response } from 'express';
+import { User } from '@prisma/client';
 import { JwtPayload, Tokens } from './types';
-import { SigInAuthDto } from './dto/signIn-auth.dto';
-import { UsersService } from '../users/users.service';
-import { CreateUserDto } from '../users/dto/create-user.dto';
-import { Not } from 'typeorm';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly jwtService: JwtService,
-    private readonly userwsService:UsersService
   ) {}
 
-  async getTokens(userId: number, email: string): Promise<Tokens> {
-    const jwtPayload: JwtPayload = {
-      sub: userId,
-      email: email,
+
+  async getTokens(user: User): Promise<Tokens> {
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
     };
+
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync(jwtPayload, {
+      this.jwtService.signAsync(payload, {
         secret: process.env.ACCESS_TOKEN_KEY,
         expiresIn: process.env.ACCESS_TOKEN_TIME,
       }),
-      this.jwtService.signAsync(jwtPayload, {
+      this.jwtService.signAsync(payload, {
         secret: process.env.REFRESH_TOKEN_KEY,
         expiresIn: process.env.REFRESH_TOKEN_TIME,
       }),
@@ -40,11 +41,11 @@ export class AuthService {
     };
   }
 
-  async updateRefreshToken(userId: number, refreshToken: string) {
+  async updateRefreshToken(user: User, refreshToken: string) {
     const hashedRefreshToken = await bcrypt.hash(refreshToken, 7);
     await this.prismaService.user.update({
       where: {
-        id: userId,
+        id: user.id,
       },
       data: {
         hashedRefreshToken,
@@ -52,14 +53,29 @@ export class AuthService {
     });
   }
 
-  async signUp(createUserDto: CreateUserDto, res: Response) {
-    const newUser = await this.userwsService.create(createUserDto);
-    if(!newUser){
-      throw new InternalServerErrorException('Yange user yaratishda xatolik')
-    }
+  async signUp(createAuthDto: CreateAuthDto, res: Response): Promise<Tokens> {
+    const candidate = await this.prismaService.user.findUnique({
+      where: {
+        email: createAuthDto.email,
+      },
+    });
 
-    const tokens = await this.getTokens(newUser.id, newUser.email);
-    await this.updateRefreshToken(newUser.id, tokens.refresh_token);
+    if (candidate) {
+      throw new BadRequestException('User already exists !');
+    }
+    const hashedPassword = await bcrypt.hash(createAuthDto.password, 7);
+    const newUser = await this.prismaService.user.create({
+      data: {
+        email: createAuthDto.email,
+        hashedPassword,
+      },
+    });
+    const tokens = await this.getTokens(newUser);
+
+    const updateUser = await this.updateRefreshToken(
+      newUser,
+      tokens.refresh_token,
+    );
 
     res.cookie('refresh_token', tokens.refresh_token, {
       maxAge: Number(process.env.COOKIE_TIME),
@@ -69,47 +85,117 @@ export class AuthService {
     return tokens;
   }
 
-  // async signin(loginAdminDto: SigInAuthDto, res: Response) {
-  //   const { email, password } = loginAdminDto;
-  //   const admin = await this.adminRepo.findOne({ where: { email } });
-  //   if (!admin) {
-  //     throw new BadRequestException('Admin not found');
-  //   }
-  //   if (!admin.is_active) {
-  //     throw new BadRequestException('Admin  is not activate');
-  //   }
-  //   const isMatchPass = await bcrypt.compare(password, admin.hashed_password);
-  //   if (!isMatchPass) {
-  //     throw new BadRequestException('Password do not match');
-  //   }
 
-  //   const tokens = await this.getTokens(admin);
-  //   const hashed_refresh_token = await bcrypt.hash(tokens.refresh_token, 7);
-  //   const updatedAdmin = await this.adminRepo.update(
-  //     { hashed_refresh_token },
-  //     {
-  //       where: { id: admin.id },
-  //       returning: true,
-  //     },
-  //   );
-  //   res.cookie('refresh_token', tokens.refresh_token, {
-  //     maxAge: 15 * 24 * 60 * 60 * 1000,
-  //     httpOnly: true,
-  //   });
-  //   const response = {
-  //     message: 'Admin logged in',
-  //     admin: updatedAdmin[1][0],
-  //     tokens,
-  //   };
-  //   return response;
-  // }
+  async signIn(loginAuthDto: LoginAuthDto, res: Response) {
+    const { password, email } = loginAuthDto;
+    console.log(password, email);
 
+    const newUser = await this.prismaService.user.findUnique({
+      where: { email: loginAuthDto.email },
+    });
+    if (!newUser) {
+      throw new BadRequestException('User not found');
+    }
+
+    const passwordIsMatch = await bcrypt.compare(
+      password,
+      newUser.hashedPassword,
+    );
+
+    if (!passwordIsMatch) {
+      throw new BadRequestException('Password do not match');
+    }
+
+    const tokens = await this.getTokens(newUser);
+
+    const updateUser = await this.updateRefreshToken(
+      newUser,
+      tokens.refresh_token,
+    );
+
+    res.cookie('refresh_token', tokens.refresh_token, {
+      maxAge: Number(process.env.COOKIE_TIME),
+      httpOnly: true,
+    });
+
+    return tokens;
+  }
+  
+  
+  async logout(refreshToken: string, res: Response) {
+    const User = await this.jwtService.verify(refreshToken, {
+      secret: process.env.REFRESH_TOKEN_KEY,
+    });
+    if (!User) {
+      throw new ForbiddenException('user not verified');
+    }
+    const checkStuff = await this.prismaService.user.findUnique({
+      where: { id: User.id },
+    });
+    if (!checkStuff) {
+      throw new BadRequestException('User not Found');
+    }
+    const Users = await this.prismaService.user.update({
+      ...User,
+      hashed_refresh_token: null,
+    });
+    res.clearCookie('refresh_token');
+
+    return Users.hashedRefreshToken;
+  }
+
+  async refreshToken(user: number, refreshToken: string, res: Response) {
+    const decodedToken = await this.jwtService.decode(refreshToken);
+    if (user !== decodedToken['id']) {
+      throw new BadRequestException('server not found');
+    }
+
+    const newUser = await this.prismaService.user.findUnique({
+      where: { id: user },
+    });
+
+    if (!newUser || !newUser.hashedRefreshToken) {
+      throw new BadRequestException('User not found');
+    }
+    const tokenMatch = await bcrypt.compare(
+      refreshToken,
+      newUser.hashedRefreshToken,
+    );
+
+    if (!tokenMatch) {
+      throw new ForbiddenException('Forbidden');
+    }
+
+    const tokens = await this.getTokens(newUser);
+    const refresh_token = await bcrypt.hash(tokens.refresh_token, 7);
+
+    const checkUser = await this.prismaService.user.findUnique({
+      where: { id: newUser.id },
+    });
+    if (!checkUser) {
+      throw new BadRequestException('user not Found');
+    }
+
+    const updateUser = await this.updateRefreshToken(
+      newUser,
+      tokens.refresh_token,
+    );
+
+    res.cookie('refresh_token', tokens.refresh_token, {
+      maxAge: Number(process.env.COOKIE_TIME),
+      httpOnly: true,
+    });
+
+    return tokens;
+  }
+
+   
   create(createAuthDto: CreateAuthDto) {
     return 'This action adds a new auth';
   }
 
   findAll() {
-    return `This action returns all auth`;
+    return this.prismaService.user.findMany();
   }
 
   findOne(id: number) {

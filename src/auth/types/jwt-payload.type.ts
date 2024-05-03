@@ -1,4 +1,5 @@
-export type JwtPayload = {
+
+export type JwtPayload={
     sub:number
     email:string
 }

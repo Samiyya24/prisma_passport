@@ -4,9 +4,11 @@ const core_1 = require("@nestjs/core");
 const app_module_1 = require("./app.module");
 const cookieParser = require("cookie-parser");
 const common_1 = require("@nestjs/common");
+const logger_factory_1 = require("./common/logger/logger-factory");
 const start = async () => {
     try {
         const app = await core_1.NestFactory.create(app_module_1.AppModule);
+        logger: (0, logger_factory_1.loggerFactory)('Passport');
         const PORT = process.env.PORT || 3333;
         app.use(cookieParser());
         app.useGlobalPipes(new common_1.ValidationPipe());

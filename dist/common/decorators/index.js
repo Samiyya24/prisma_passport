@@ -15,4 +15,6 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./ispublic-decorator"), exports);
+__exportStar(require("./get_current_user_id.decorator"), exports);
+__exportStar(require("./get_current_user.decorator"), exports);
 //# sourceMappingURL=index.js.map

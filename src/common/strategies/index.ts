@@ -1,1 +1,1 @@
-export * from "./access_token.strategy"
+export * from "./access-token.strategy"

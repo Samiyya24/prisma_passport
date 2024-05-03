@@ -15,4 +15,5 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./access-token.guard"), exports);
+__exportStar(require("./refresh_token.guard"), exports);
 //# sourceMappingURL=index.js.map

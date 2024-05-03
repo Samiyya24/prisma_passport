@@ -15,4 +15,5 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./access_token.strategy"), exports);
+__exportStar(require("./refresh_token_bearer.strategy"), exports);
 //# sourceMappingURL=index.js.map

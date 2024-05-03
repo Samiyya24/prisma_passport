@@ -16,10 +16,11 @@ const prisma_service_1 = require("../prisma/prisma.service");
 const jwt_1 = require("@nestjs/jwt");
 const users_service_1 = require("../users/users.service");
 let AuthService = class AuthService {
-    constructor(prismaService, jwtService, userwsService) {
+    constructor(prismaService, jwtService, userwsService, logger) {
         this.prismaService = prismaService;
         this.jwtService = jwtService;
         this.userwsService = userwsService;
+        this.logger = logger;
     }
     async getTokens(userId, email) {
         const jwtPayload = {
@@ -65,6 +66,75 @@ let AuthService = class AuthService {
         });
         return tokens;
     }
+    async signIn(email, password, res) {
+        this.logger.log('Calling signin()', users_service_1.UsersService.name);
+        this.logger.debug('Calling signin()', users_service_1.UsersService.name);
+        this.logger.verbose('Calling signin()', users_service_1.UsersService.name);
+        this.logger.warn('Calling signin()', users_service_1.UsersService.name);
+        try {
+            throw new Error();
+        }
+        catch (e) {
+            this.logger.error('Calling signin()', e.stack, users_service_1.UsersService.name);
+        }
+        this.logger.debug('signin', users_service_1.UsersService.name);
+        const user = await this.prismaService.user.findUnique({
+            where: {
+                email: email,
+            },
+        });
+        if (!user) {
+            throw new common_1.BadRequestException('Invalid email or password');
+        }
+        const passwordMatch = await bcrypt.compare(password, user.hashedPassword);
+        if (!passwordMatch) {
+            throw new common_1.BadRequestException('Invalid email or password');
+        }
+        const tokens = await this.getTokens(user.id, user.email);
+        await this.updateRefreshToken(user.id, tokens.refresh_token);
+        res.cookie('refresh_token', tokens.refresh_token, {
+            maxAge: Number(process.env.COOKIE_TIME),
+            httpOnly: true,
+        });
+        return tokens;
+    }
+    async signout(userId, res) {
+        console.log(userId);
+        const user = await this.prismaService.user.updateMany({
+            where: {
+                id: userId,
+                hashedRefreshToken: {
+                    not: null,
+                },
+            },
+            data: {
+                hashedRefreshToken: null,
+            },
+        });
+        if (!user)
+            throw new common_1.ForbiddenException('Acces Denied');
+        res.clearCookie('refresh_token');
+        return true;
+    }
+    async refreshTokens(userId, refreshToken, res) {
+        const user = await this.prismaService.user.findUnique({
+            where: {
+                id: userId,
+            },
+        });
+        if (!user || !user.hashedRefreshToken)
+            throw new common_1.ForbiddenException('Access Denied1');
+        const rtMatches = await bcrypt.compare(refreshToken, user.hashedRefreshToken);
+        if (!rtMatches)
+            throw new common_1.ForbiddenException('Access Denied2');
+        const tokens = await this.getTokens(user.id, user.email);
+        await this.updateRefreshToken(user.id, tokens.refresh_token);
+        res.cookie('refresh_token', tokens.refresh_token, {
+            maxAge: 15 * 24 * 60 * 60 * 1000,
+            httpOnly: true,
+        });
+        return tokens;
+    }
     create(createAuthDto) {
         return 'This action adds a new auth';
     }
@@ -86,6 +156,7 @@ exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         jwt_1.JwtService,
-        users_service_1.UsersService])
+        users_service_1.UsersService,
+        common_1.Logger])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map
